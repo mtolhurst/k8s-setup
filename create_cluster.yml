@@ -1,0 +1,43 @@
+---
+- name: configure all nodes to run k8s
+  hosts: all
+
+  roles:
+    - install_dependencies
+
+- name: create the cluster
+  hosts: controlPlane
+  roles:
+    - create_cluster
+
+  # Hacky bullshit allowing for variable sharing between hosts
+- name: fetch join command
+  hosts: controlPlane
+  tasks:
+    - name: fetch join command
+      command: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+    - name: use fake host to register join command
+      changed_when: false
+      add_host:
+        name: "K8S_JOIN_COMMAND"
+        command: "{{ join_command.stdout }}"
+
+  # Hacky bullshit pt 2
+- name: join workers
+  hosts: worker
+  tasks:
+    - name: join cluster
+      become: true
+      shell:
+        cmd: "{{ hostvars['K8S_JOIN_COMMAND']['command'] }}"
+        creates: /var/lib/kubelet/config.yaml
+  
+  
+- name: install core dependencies
+  hosts: controlPlane
+  roles:
+    - networking
+    - longhorn
+    - monitoring

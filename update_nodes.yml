@@ -1,0 +1,9 @@
+---
+- name: update all nodes
+  hosts: all
+  remote_user: matt
+
+  roles:
+    - update_existing_packages
+    
+

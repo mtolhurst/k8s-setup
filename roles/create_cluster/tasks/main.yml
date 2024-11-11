@@ -1,0 +1,32 @@
+- name: create the cluster
+  become: true
+  shell:
+    cmd: kubeadm init --pod-network-cidr=10.1.1.0/24
+    creates: /var/lib/kubelet/config.yaml
+
+- name: create .kube directory
+  file:
+    path: /home/{{ ansible_user_id }}/.kube
+    state: directory
+    mode: 0755
+
+- name: copies admin.conf to user's kube config
+  become: true
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "/home/{{ ansible_user_id }}/.kube/config"
+    remote_src: yes
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: 0700
+
+- name: untaint node
+  kubernetes.core.k8s_taint:
+    state: absent
+    name: "{{ inventory_hostname }}"
+    taints:
+    - effect: NoSchedule
+      key: "{{ item }}"
+  loop:
+    - node-role.kubernetes.io/master
+    - node-role.kubernetes.io/control-plane

@@ -1,0 +1,142 @@
+# https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+- name: install required dependencies from debian repos
+  become: true
+  apt:
+    name: 
+      - containerd
+      - git
+      - apt-transport-https 
+      - ca-certificates 
+      - gpg
+      - python3-yaml
+      - python3-kubernetes
+      - open-iscsi
+      - nfs-common
+      - cryptsetup
+      - jq
+    state: present
+
+# TODO this could be improved by checking the line exists in the file
+- name: check if containerd config needs changing
+  stat:
+    path: /etc/containerd/config.toml
+  register: cd_stat
+    
+
+- name: get containerd default config
+  command: containerd config default
+  register: containerd_config
+  when: not cd_stat.stat.exists
+
+- name: create containerd config directory
+  become: true
+  file:
+    path: /etc/containerd
+    state: directory
+    mode: 0755
+  when: not cd_stat.stat.exists
+
+- name: Write default containerd config
+  become: true
+  ansible.builtin.copy:
+    content: "{{ containerd_config.stdout }}"
+    dest: /etc/containerd/config.toml
+  when: not cd_stat.stat.exists
+
+- name: enable systemd cgroup for containerd
+  become: true
+  lineinfile:
+    path: /etc/containerd/config.toml
+    search_string: "SystemdCgroup"
+    line: "            SystemdCgroup = true"
+  when: not cd_stat.stat.exists
+    
+
+- name: import k8s public signing key
+  become: true
+  apt_key:
+    url: https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key
+    state: present
+
+  # TODO turn k8s version into a variable
+- name: add the k8s apt repo
+  become: true
+  apt_repository:
+    repo: deb https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /
+    state: present
+
+- name: import helm public key
+  become: true
+  apt_key:
+    url: https://baltocdn.com/helm/signing.asc
+    state: present
+
+- name: add the helm apt repo
+  become: true
+  apt_repository:
+    repo: deb https://baltocdn.com/helm/stable/debian/ all main
+    state: present
+ 
+- name: update packages
+  become: true
+  apt:
+    name: "*"
+    state: latest
+    update_cache: yes
+
+- name: install kube packages
+  become: true
+  apt:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+      - helm
+
+- name: pin kube package versions
+  become: true
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+
+- name: Install newer Helm Diff
+  tags: ["kube", "base"]
+  become: false
+  kubernetes.core.helm_plugin:
+    plugin_path: "https://github.com/databus23/helm-diff"
+    state: present
+
+- name: enable kubelet service
+  become: true
+  systemd_service:
+    name: kubelet
+    state: started
+    enabled: true
+
+- name: enable overlay and br_netfilter kernel modules
+  become: true
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+    persistent: present
+  loop:
+    - overlay
+    - br_netfilter
+    - iscsi_tcp
+  
+- name: enable network sysctls
+  become: true
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: '1'
+    sysctl_set: true
+    state: present
+    reload: true
+  loop:
+    - net.ipv4.ip_forward
+    - net.bridge.bridge-nf-call-ip6tables
+    - net.bridge.bridge-nf-call-iptables

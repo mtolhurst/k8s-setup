@@ -1,0 +1,5 @@
+- name: Update all debian packages
+  become: true
+  apt:
+    name: "*"
+    state: latest

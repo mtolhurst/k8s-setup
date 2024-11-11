@@ -1,0 +1,16 @@
+- name: install cilium helm repo
+  kubernetes.core.helm_repository:
+    name: cilium
+    repo_url: https://helm.cilium.io/
+
+# TODO this is always reporting as changed :/ 
+- name: install cilium
+  kubernetes.core.helm:
+    name: cilium
+    chart_ref: cilium/cilium
+    chart_version: 1.16.3
+    release_namespace: kube-system
+    set_values:
+      - value: ingressController.enabled=true
+      - value: nodePort.enabled=true
+      - value: ingressController.loadbalancerMode=dedicated

@@ -1,0 +1,7 @@
+---
+- name: configure a new node to run k8s
+  hosts: all
+  remote_user: matt
+
+  roles:
+    - install_dependencies

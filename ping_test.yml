@@ -1,0 +1,9 @@
+---
+- name: test connectivity to all hosts by pinging 
+  hosts: all
+
+  tasks:
+    - name: ping to check connectivity
+      ping:
+        data: success
+        

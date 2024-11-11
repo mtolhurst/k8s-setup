@@ -1,0 +1,237 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: influxdb-info
+  namespace: monitoring
+type: Opaque
+data:
+  user: YWRtaW4K
+  password: bHM2STF5a1hobHZWaWFBRFpaSDAlCg==
+  org: a3ViZXJuZXRlcwo=
+  token: Y1dFMFJaYkVTVW9nVDdkeFcxUU8=
+  readuser: a3ViZXN0YXRzcm8K
+  readpass: a283ZUxnZEVQYmxybWRod3NoRmY=
+  writeuser: a3ViZXN0YXRzdwo=
+  writepass: WGhkbWJ5Q1RNaUF6SDg1SXp5S0k=
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: influxdb-pvc
+  namespace: monitoring
+  labels:
+    app: influxdb
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: influx-monitoring-files
+  namespace: monitoring
+data:
+  00_setup_dbrp: |
+    #!/bin/bash
+    # 
+
+    # Create the DBRP policy 
+    # This isn't _strictly_ necessary as more
+    # recent versions auto-map, but as we're here
+    # anyway lets be explicit
+    influx v1 dbrp create \
+    --bucket-id ${DOCKER_INFLUXDB_INIT_BUCKET_ID} \
+    --db telegraf \
+    --rp autogen \
+    --default \
+    --org ${DOCKER_INFLUXDB_INIT_ORG}
+
+    # Create the write user
+    influx v1 auth create \
+      --username ${V1_WRITE_USERNAME} \
+      --password ${V1_WRITE_PASSWORD} \
+      --write-bucket ${DOCKER_INFLUXDB_INIT_BUCKET_ID} \
+      --org ${DOCKER_INFLUXDB_INIT_ORG}
+
+    influx v1 auth create \
+      --username ${V1_READ_USERNAME} \
+      --password ${V1_READ_PASSWORD} \
+      --read-bucket ${DOCKER_INFLUXDB_INIT_BUCKET_ID} \
+      --org ${DOCKER_INFLUXDB_INIT_ORG}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: influxdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: influxdb
+  template:
+    metadata:
+      labels:
+        app: influxdb
+    spec:
+      containers:
+      - env:
+        - name: DOCKER_INFLUXDB_INIT_MODE
+          value: "setup"
+        # Provide account details using the secret
+        - name: DOCKER_INFLUXDB_INIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-info
+              key: user
+              optional: false
+        - name: DOCKER_INFLUXDB_INIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-info
+              key: password
+              optional: false
+        - name: DOCKER_INFLUXDB_INIT_ORG
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-info
+              key: org
+              optional: false
+        - name: V1_READ_USERNAME
+          valueFrom:
+              secretKeyRef:
+                name: influxdb-info
+                key: readuser
+                optional: false
+        - name: V1_READ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-info
+              key: readpass
+              optional: false
+        - name: V1_WRITE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-info
+              key: writeuser
+              optional: false
+        - name: V1_WRITE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-info
+              key: writepass
+              optional: false
+        - name: DOCKER_INFLUXDB_INIT_ADMIN_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-info
+              key: token
+              optional: false
+        # These are optional and will be used if EDR is being
+        # configured
+        - name: UPSTREAM_URL
+          valueFrom:
+            secretKeyRef:
+              name: upstream-influxdb
+              key: url
+              optional: true
+        - name: UPSTREAM_ORG
+          valueFrom:
+            secretKeyRef:
+              name: upstream-influxdb
+              key: org
+              optional: true
+        - name: UPSTREAM_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: upstream-influxdb
+              key: token
+              optional: true
+        - name: UPSTREAM_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: upstream-influxdb
+              key: bucket
+              optional: true
+        # Define the bucket to auto-create
+        - name: DOCKER_INFLUXDB_INIT_BUCKET
+          value: "telegraf"
+        - name: DOCKER_INFLUXDB_INIT_RETENTION
+          value: "90d"
+        image: influxdb:2.7
+        name: influxdb2
+        ports:
+          - containerPort: 8086
+            name: http-influxport
+            protocol: TCP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 1Gi
+        volumeMounts:
+          # Mount two paths from the pvc
+          - mountPath: /etc/influxdb2
+            name: influxdb-pvc
+            subPath: "influxdb/config"
+          - mountPath: /var/lib/influxdb2
+            name: influxdb-pvc
+            subPath: "influxdb/data"
+          # Mount the configmap as an init script
+          - mountPath: /docker-entrypoint-initdb.d/create_dbrp.sh
+            name: mon-files
+            subPath: "00_setup_dbrp"
+      volumes:
+        - name: influxdb-pvc
+          persistentVolumeClaim:
+            claimName: influxdb-pvc
+        - name: mon-files
+          configMap:
+            name: influx-monitoring-files
+            defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: influxdb
+  name: influxdb
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8086
+      name: influxapi
+      protocol: TCP
+      targetPort: http-influxport
+  selector:
+    app: influxdb
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: influxdb-ingress
+  namespace: monitoring
+  annotations:
+    ingress.cilium.io/service-type: NodePort
+
+spec:
+  ingressClassName: cilium
+  rules:
+    - http:
+        paths:
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: influxdb
+                port:
+                  number: 8086
