@@ -9,20 +9,23 @@
       - ca-certificates 
       - gpg
       - python3-yaml
-      - python3-kubernetes
+      - python3-pip
       - open-iscsi
       - nfs-common
       - cryptsetup
       - jq
     state: present
 
-# TODO this could be improved by checking the line exists in the file
+- name: install python kubernetes (using pip for newer version)
+  pip:
+    name: kubernetes
+    break_system_packages: true
+
 - name: check if containerd config needs changing
   stat:
     path: /etc/containerd/config.toml
   register: cd_stat
     
-
 - name: get containerd default config
   command: containerd config default
   register: containerd_config
@@ -50,7 +53,6 @@
     search_string: "SystemdCgroup"
     line: "            SystemdCgroup = true"
   when: not cd_stat.stat.exists
-    
 
 - name: import k8s public signing key
   become: true

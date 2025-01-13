@@ -1,0 +1,124 @@
+# Based on https://artifacthub.io/packages/helm/anza-labs/lubelogger?modal=template&template=deployment.yaml
+---
+# PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lubelogger-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lube-logger
+  namespace: lube-logger
+  labels:
+    app: lube-logger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lube-logger
+  template:
+    metadata:
+      labels:
+        app: lube-logger
+    spec:
+      volumes:
+#        - name: config-ro # TODO add this if config changes
+#          secret:
+#            secretName: lubelogger-config-secret
+#            items:
+#              - key: userConfig
+#                path: userConfig.json
+        - name: translations
+          emptyDir: {}
+        - name: config
+          emptyDir: {}
+        - name: data
+          persistentVolumeClaim:
+            claimName: lubelogger-pvc
+      containers:
+        - name: lubelogger
+          image: ghcr.io/hargata/lubelogger
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              port: "http"
+              path: "/"
+          readinessProbe:
+            httpGet:
+              port: "http"
+              path: "/"
+          volumeMounts:
+            - name: config
+              mountPath: /App/config
+            - name: translations
+              mountPath: /App/wwwroot/translations
+            - name: data
+              mountPath: /App/data
+              subPath: data
+            - name: data
+              mountPath: /App/wwwroot/documents
+              subPath: documents
+            - name: data
+              mountPath: /App/wwwroot/images
+              subPath: images
+          env:
+            - name: "LC_ALL"
+              value: "en_US.UTF-8"
+            - name: "LANG"
+              value: "en_US.UTF-8"
+            - name: "LOGGING__LOGLEVEL__DEFAULT"
+              value: "Information"
+#            - name: POSTGRES_CONNECTION
+#              valueFrom:
+#                secretKeyRef:
+#                  name: {{ include "lubelog.postgresSecret" . }}
+#                  key: POSTGRES_CONNECTION
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: lube-logger
+spec:
+  ports:
+    - port: 8080
+      protocol: TCP
+      targetPort: http
+  selector:
+    app: lube-logger
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lube-logger-ingress
+  namespace: lube-logger
+spec:
+  ingressClassName: cilium
+  rules:
+    - http:
+        paths:
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: lube-logger
+                port:
+                  number: 8080

@@ -6,16 +6,49 @@
     kind: Namespace
     state: present
 
-- name: copy influxdb template
+- name: install prometheus community helm repo
+  tags: monitoring
+  kubernetes.core.helm_repository:
+    name: prometheus-community
+    repo_url: https://prometheus-community.github.io/helm-charts
+
+#- name: install prometheus monitoring stack
+#  tags: monitoring
+#  kubernetes.core.helm:
+#    name: prometheus
+#    chart_ref: prometheus-community/kube-prometheus-stack
+#    release_namespace: monitoring
+#    chart_version: 67.9.0
+#    set_values:
+#      - value: grafana.ingress.enabled=true
+#      - value: alertmanager.enabled=false
+#      - value: grafana.persistence.enabled=true
+#      - value: prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes=["ReadWriteOnce"]
+#        value_type: json
+#      - value: prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=50Gi
+#      - value: prometheus.ingress.enabled=true
+
+
+- name: install prometheus
+  tags: monitoring
+  kubernetes.core.helm:
+    name: prometheus
+    chart_ref: prometheus-community/prometheus
+    release_namespace: monitoring
+    chart_version: 26.1.0
+    set_values:
+      - value: server.persistentVolume.enabled=true
+
+- name: copy grafana template
   tags: monitoring
   copy:
-    src: influxdb.yml
+    src: grafana.yml
     dest: ~/definitions/monitoring/
 
-- name: apply influxdb definition
+- name: apply grafana definition
   tags: monitoring
   kubernetes.core.k8s:
     apply: true
     state: present
-    src: ~/definitions/monitoring/influxdb.yml
+    src: ~/definitions/monitoring/grafana.yml
     namespace: monitoring

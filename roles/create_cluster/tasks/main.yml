@@ -1,7 +1,7 @@
 - name: create the cluster
   become: true
   shell:
-    cmd: kubeadm init --pod-network-cidr=10.1.1.0/24
+    cmd: kubeadm init --pod-network-cidr=10.2.0.0/20 --skip-phases=addon/kube-proxy
     creates: /var/lib/kubelet/config.yaml
 
 - name: create .kube directory

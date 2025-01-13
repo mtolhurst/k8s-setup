@@ -1,0 +1,5 @@
+---
+- name: install core dependencies
+  hosts: controlPlane
+  roles:
+    - applications

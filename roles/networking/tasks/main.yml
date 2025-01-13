@@ -3,7 +3,7 @@
     name: cilium
     repo_url: https://helm.cilium.io/
 
-# TODO this is always reporting as changed :/ 
+# TODO this is always reporting as changed :/
 - name: install cilium
   kubernetes.core.helm:
     name: cilium
@@ -12,5 +12,26 @@
     release_namespace: kube-system
     set_values:
       - value: ingressController.enabled=true
-      - value: nodePort.enabled=true
       - value: ingressController.loadbalancerMode=dedicated
+      - value: ingressController.service.type=LoadBalancer
+      - value: ingressController.default=true
+      - value: kubeProxyReplacement=true
+      - value: k8sServicePort=6443
+      - value: "k8sServiceHost={{ ansible_default_ipv4.address }}"
+      - value: l2announcements.enabled=true
+      - value: k8sClientRateLimit.qps=80
+      - value: k8sClientRateLimit.burst=160
+      - value: externalIPs.enabled=true
+      - value: "ipam.operator.clusterPoolIPv4PodCIDRList=10.2.0.0/20"
+
+
+- name: copy cilium extra config
+  copy:
+    src: cilium-config.yml
+    dest: ~/definitions/cilium/
+
+- name: create cilium extra config
+  kubernetes.core.k8s:
+    state: present
+    apply: true
+    src: ~/definitions/cilium/cilium-config.yml

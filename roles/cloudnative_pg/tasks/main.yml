@@ -1,0 +1,11 @@
+---
+# https://github.com/cloudnative-pg/cloudnative-pg/blob/main/docs/src/quickstart.md
+- name: install cloudnative-pg operator
+  kubernetes.core.k8s:
+    apply: yes
+    state: present
+    src: https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.24/releases/cnpg-1.24.1.yaml
+    server_side_apply:
+      field_manager: ansible
+  tags:
+    - pg

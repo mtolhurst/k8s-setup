@@ -1,0 +1,47 @@
+#- name: create wanderer namespace
+#  tags: wanderer
+#  kubernetes.core.k8s:
+#    name: wanderer
+#    api_version: v1
+#    kind: Namespace
+#    state: present
+#
+#
+#- name: copy wanderer template
+#  tags: wanderer
+#  copy:
+#    src: wanderer.yml
+#    dest: ~/definitions/wanderer/
+#
+#- name: apply wanderer definition # TODO this is broken. Can't write trails to DB.
+#  tags: wanderer
+#  kubernetes.core.k8s:
+#    apply: true
+#    state: present
+#    src: ~/definitions/wanderer/wanderer.yml
+#    namespace: wanderer
+##
+
+- name: create lubelogger namespace
+  tags: lubelogger
+  kubernetes.core.k8s:
+    name: lube-logger
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: copy lube logger template
+  tags: lubelogger
+  copy:
+    src: lubelogger.yml
+    dest: ~/definitions/lubelogger/
+
+- name: apply lube logger definition
+  tags: lubelogger
+  kubernetes.core.k8s:
+    apply: true
+    state: present
+    src: ~/definitions/lubelogger/lubelogger.yml
+    namespace: lube-logger
+
+
