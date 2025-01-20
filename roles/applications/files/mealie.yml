@@ -1,0 +1,137 @@
+---
+# Create a postgres 15 db
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: mealie-pg-cluster
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:15
+  storage:
+    size: 10Gi
+
+---
+# PVC for mealie data not in pg
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mealie-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mealie
+  namespace: mealie
+  labels:
+    app: mealie
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mealie
+  template:
+    metadata:
+      labels:
+        app: mealie
+    spec:
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mealie-pvc
+      containers:
+        - name: mealie
+          image: ghcr.io/mealie-recipes/mealie:v2.4.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9000
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              port: "http"
+              path: "/"
+          readinessProbe:
+            httpGet:
+              port: "http"
+              path: "/"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data/
+          env:
+            - name: ALLOW_SIGNUP
+              value: "false"
+            - name: PUID
+              value: "1000"
+            - name: GUID
+              value: "1000"
+            - name: TZ
+              value: Australia/Sydney
+            - name: BASE_URL
+              value: http://10.2.16.4
+            - name: DB_ENGINE
+              value: postgres
+            - name: POSTGRES_SERVER
+              value: $(MEALIE_PG_CLUSTER_RW_SERVICE_HOST)
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mealie-pg-cluster-app
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mealie-pg-cluster-app
+                  key: password
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: mealie-pg-cluster-app
+                  key: port
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: mealie-pg-cluster-app
+                  key: dbname
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mealie
+spec:
+  ports:
+    - port: 9000
+      protocol: TCP
+      targetPort: http
+  selector:
+    app: mealie
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mealie-ingress
+  namespace: mealie
+spec:
+  ingressClassName: cilium
+  rules:
+    - http:
+        paths:
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: mealie
+                port:
+                  number: 9000
